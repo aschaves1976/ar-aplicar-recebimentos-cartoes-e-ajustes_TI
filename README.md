@@ -1,7 +1,3 @@
-README.md
-README.md
-**
-
 ## Aplicar Recebimento aos Títulos de Cartões
 
 Este desenvolvimento visa atender demandas pontuais no cliente.
@@ -20,7 +16,6 @@ Após a aplicação dos títulos um ajuste é executado para ajustar qualquer tr
 | XXVEN - AR Aplicar Recebimentos Cartões (TI) | DV AR SUPER USUARIO | JLBR + AR Reports | Latin America Localizations |
 
 ## File
-
 XXVEN_AR_RCPTS_CREDITCARD_PKG.pks
 XXVEN_AR_RCPTS_CREDITCARD_PKG.pkb
-**
+
