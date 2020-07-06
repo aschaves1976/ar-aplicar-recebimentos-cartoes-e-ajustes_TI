@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
+CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
 -- +=================================================================+
 -- |                 VENANCIO, RIO DE JANEIRO, BRASIL                |
 -- |                       ALL RIGHTS RESERVED.                      |
@@ -301,8 +301,6 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                     , p_creation_date        => SYSDATE
                   )
                 ;
-                xxven_int_common_services_pk.put_log('Return message for AR_RECEIPT_API_PUB.APPLY: ' || x_msg_data);
-
 
             ELSIF x_msg_count > 1 THEN
               LOOP
@@ -321,9 +319,6 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                       , p_creation_date        => SYSDATE
                     )
                   ;
-                  xxven_int_common_services_pk.put_log('Return messages for AR_RECEIPT_API_PUB.APPLY: ' ||ln_count || '.' ||x_msg_data);
-
-
               END LOOP;
             END IF;
 
@@ -331,14 +326,17 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
 
             UPDATE ra_customer_trx_all
             SET    attribute3          = 'AR_RECEIPT_API_PUB.APPLY - ERROR'
+                 , last_update_date    = SYSDATE
             WHERE  customer_trx_id     = l_customer_trx_id(i);
             COMMIT;
           ELSE
             ln_amount_trx := ln_amount_trx + l_amount_due_remaining(i);
 
             UPDATE ra_customer_trx_all
-            SET    attribute3          = 'AR_RECEIPT_API_PUB.APPLY - SUCCESSFUL'
-            WHERE  customer_trx_id     = l_customer_trx_id(i);
+              SET    attribute3       = 'AR_RECEIPT_API_PUB.APPLY - SUCCESSFUL'
+                   , last_update_date = SYSDATE
+            WHERE 1=1
+              AND customer_trx_id     = l_customer_trx_id(i);
             COMMIT;
 
             ln_count_succesnf := ln_count_succesnf + 1;
@@ -388,6 +386,14 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
     fnd_file.put_line(fnd_file.log,CHR(13)||' PROCESSADOS COM ERRO:    '|| ln_count_errornf);
     fnd_file.put_line(fnd_file.log,CHR(13)||' PROCESSADOS COM SUCESSO: '|| ln_count_succesnf);
 
+    fnd_file.put_line(fnd_file.log, CHR(13) || 'Para Localizar as Transações processadas com sucesso: SELECT * FROM ra_customer_trx_all WHERE 1=1 AND ' ||
+	                  'attribute3       = ' || CHR(39) || 'AR_RECEIPT_API_PUB.APPLY - SUCCESSFUL' || CHR(39) || ' AND TRUNC(last_update_date) = TRUNC(SYSDATE); '
+                     );
+
+    fnd_file.put_line(fnd_file.log, CHR(13) || 'Para Localizar as Transações com erro: SELECT * FROM XXVEN_TMP_LOG_TB WHERE 1=1 ' ||
+	                  ' AND TRUNC(creation_date) = TRUNC(SYSDATE); '
+                     );
+
     fnd_file.put_line(fnd_file.log,CHR(13)||'    Fim APPLY_RECEIPT_P  ');
     fnd_file.put_line(fnd_file.log,'-------------------------------------------------------------------------------');
   END  APPLY_RECEIPT_P;
@@ -431,9 +437,9 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                AND a.bill_to_customer_id      NOT IN (11110, 10109, 11108)
                AND a.org_id                   = fnd_global.org_id            --101 para HN_AJUSTE_BAIXA_CC    AND A.ORG_ID = 83 para DV_AJUSTE_BAIXA_CC
                AND a.trx_date                 <= TO_DATE('30/09/2019','DD/MM/YYYY')
-               AND b.amount_due_remaining     <> 0
+               AND b.amount_due_remaining     > 0
                AND a.status_trx               != 'VD'
-               AND b.status                   != 'CL'
+               --AND b.status                   != 'CL'
                AND (D.name like '%TPOS_%' OR 
                     D.name like '%TEF%' OR 
                     D.name like '%EQ%')
@@ -571,7 +577,9 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
   BEGIN
     mo_global.init('AR');
     mo_global.set_policy_context( p_access_mode => 'S', p_org_id => fnd_global.org_id ); -- 83);
-    fnd_file.put_line (fnd_file.log, lv_routine||' - Início...');
+    fnd_file.put_line ( fnd_file.log, lv_routine||' - Início...' );
+    fnd_file.put_line ( fnd_file.log, CHR(13)||CHR(13) );
+    fnd_file.put_line ( fnd_file.log, 'O Registro do LOG: SELECT * FROM xxven_erro_adj_tb WHERE 1=1 AND TRUNC(CREATION_DATE) = TRUNC(SYSDATE);' || CHR(13) );
 
     lv_debug := '(00) - '||lv_pkname||'.'||lv_routine||CHR(13);
     --
@@ -809,30 +817,39 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                        )
                    ;
                ELSE
-                   LOG_II_P
-                       (
-                          P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
-                        , P_CUSTOMER_ID          => l_customer_id(ln_counter)
-                        , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
-                        , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
-                        , P_DUE_DATE             => l_due_date(ln_counter)
-                        , P_GL_DATE              => l_gl_date(ln_counter)
-                        , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
-                        , P_TRX_DATE             => l_trx_date(ln_counter)
-                        , P_DESCRICAO            => lv_debug ||' Erro não retornado para a API AR_ADJUST_PUB.CREATE_ADJUSTMENT'
-                       )
-                   ;
+                 LOG_II_P
+                     (
+                        P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                      , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                      , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                      , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                      , P_DUE_DATE             => l_due_date(ln_counter)
+                      , P_GL_DATE              => l_gl_date(ln_counter)
+                      , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                      , P_TRX_DATE             => l_trx_date(ln_counter)
+                      , P_DESCRICAO            => lv_debug ||' Erro não retornado para a API AR_ADJUST_PUB.CREATE_ADJUSTMENT'
+                     )
+                 ;
                END IF;
              END IF;
            ELSE
              COMMIT;
-             lv_sucs_msg := 'Customer_trx_id:'     || l_customer_trx_id(ln_counter)     ||
-                            'Payment_Schedule_id:' || l_payment_schedule_id(ln_counter) ||
-                            'Adjustment_id:'       || ln_new_adjustment_id              ||
+             lv_sucs_msg := 'Adjustment_id:'       || ln_new_adjustment_id    ||
                             'Adjustment_Number:'   || lv_new_adjustment_number||' AJUSTE CRIADO COM SUCESSO. '
              ;
-             fnd_file.put_line (fnd_file.log, lv_sucs_msg);
-             dbms_output.put_line(lv_error_msg||' '||lv_msg_data);
+             LOG_II_P
+                 (
+                    P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                  , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                  , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                  , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                  , P_DUE_DATE             => l_due_date(ln_counter)
+                  , P_GL_DATE              => l_gl_date(ln_counter)
+                  , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                  , P_TRX_DATE             => l_trx_date(ln_counter)
+                  , P_DESCRICAO            => lv_sucs_msg
+                 )
+             ;
              --
            END IF;
          END;
@@ -847,8 +864,8 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
 
     fnd_file.put_line (fnd_file.log, 'Total Selecionado no Cursor: '||ln_cnt);
 
-  dbms_output.put_lINe( 'Finalizado em: '||((dbms_utility.get_time - ln_time)/100) || ' seconds....' );
-  fnd_file.put_lINe (fnd_file.log, lv_routINe||' - Finalizado em: '||((dbms_utility.get_time - ln_time)/100) || ' seconds....' );
+    dbms_output.put_lINe( 'Finalizado em: '||((dbms_utility.get_time - ln_time)/100) || ' seconds....' );
+    fnd_file.put_lINe (fnd_file.log, lv_routINe||' - Finalizado em: '||((dbms_utility.get_time - ln_time)/100) || ' seconds....' );
 
   EXCEPTION
     WHEN OTHERS THEN
@@ -860,3 +877,4 @@ CREATE OR REPLACE PACKAGE bODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
   END CREATE_INV_ADJ_P;
 
 END XXVEN_AR_RCPTS_CREDITCARD_PKG;
+/
