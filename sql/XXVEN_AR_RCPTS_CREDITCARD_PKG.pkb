@@ -223,7 +223,8 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
       WHERE 1=1
         AND rctta.cust_trx_type_id        = rcta.cust_trx_type_id
         AND apsa.customer_trx_id          = rcta.customer_trx_id
-        AND rctta.name                    IN ( '5102_5405_ANALISA', '5102_5405_VENDA_MERC', 'CARTAO DE CRÉDITO', 'NOTA DE DÉBITO' )
+        -- AND rctta.name                    IN ( '5102_5405_ANALISA', '5102_5405_VENDA_MERC', 'CARTAO DE CRÉDITO', 'NOTA DE DÉBITO' )
+        AND rctta.name                    IN ( '5102_5405_ANALISA', '5102_5405_VENDA_MERC', 'CARTAO DE CREDITO', 'NOTA DE DÉBITO', 'NOTA DE DEBITO')
         AND rcta.trx_date                 <= TO_DATE( '30/09/2019', 'DD/MM/YYYY' )
         AND rcta.status_trx               != 'VD'
         AND apsa.amount_due_remaining     != '0' 
