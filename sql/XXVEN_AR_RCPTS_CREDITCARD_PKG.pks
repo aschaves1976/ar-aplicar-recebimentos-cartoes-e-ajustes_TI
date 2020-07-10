@@ -57,8 +57,10 @@ CREATE OR REPLACE PACKAGE XXVEN_AR_RCPTS_CREDITCARD_PKG AUTHID CURRENT_USER AS
   --
   PROCEDURE CREATE_INV_ADJ_P
     (
-        errbuf    OUT VARCHAR2
-      , retcode   OUT NUMBER
+        errbuf         OUT VARCHAR2
+      , retcode        OUT NUMBER
+      , p_customer_id  IN NUMBER
     )
   ;
 END XXVEN_AR_RCPTS_CREDITCARD_PKG;
+/

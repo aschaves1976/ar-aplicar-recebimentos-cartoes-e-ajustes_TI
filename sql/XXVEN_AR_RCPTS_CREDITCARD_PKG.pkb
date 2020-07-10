@@ -33,6 +33,17 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
     ld_start_date   DATE;
     ld_end_date     DATE;
   BEGIN
+  
+    fnd_file.put_line(fnd_file.log, CHR(13) || 'APPLY_RECEIPT: Para Localizar as Transações processadas com sucesso: SELECT * FROM ra_customer_trx_all WHERE 1=1 AND ' ||
+	                  'attribute3       = ' || CHR(39) || 'AR_RECEIPT_API_PUB.APPLY - SUCCESSFUL' || CHR(39) || ' AND TRUNC(last_update_date) = TRUNC(SYSDATE); '
+                     );
+
+    fnd_file.put_line(fnd_file.log, CHR(13) || 'APPLY_RECEIPT: Para Localizar as Transações com erro: SELECT * FROM XXVEN_TMP_LOG_TB WHERE 1=1 ' ||
+	                  ' AND TRUNC(creation_date) = TRUNC(SYSDATE); '
+                     );
+
+    fnd_file.put_line ( fnd_file.log, 'ADJUSTMENTS: O Registro do LOG: SELECT * FROM xxven_erro_adj_tb WHERE 1=1 AND TRUNC(CREATION_DATE) = TRUNC(SYSDATE);' || CHR(13) );
+
     --
     IF p_dt_ini IS NOT NULL THEN ld_start_date := fnd_date.canonical_to_date(p_dt_ini); END IF;
     IF p_dt_fin IS NOT NULL THEN ld_end_date   := fnd_date.canonical_to_date(p_dt_fin); END IF;
@@ -51,6 +62,7 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
       (
           errbuf          => errbuf    
         , retcode         => retcode
+        , p_customer_id   => p_customer_id
       )
     ;
   END main_p;
@@ -230,20 +242,6 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
         AND apsa.amount_due_remaining     > '0' 
         --AND apsa.status                   != 'CL'
         AND apsa.customer_id              = p_customer_id
-        AND NOT EXISTS
-          (
-            SELECT term_id, name
-              FROM ra_terms rtn
-            WHERE 1=1
-              AND rtn.term_id                 = apsa.term_id
-              AND term_id IN 
-              (1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,10121,1013,1014,1015,1016,1017,1018,1019,1020,1021,1024,
-               1022,1023,1026,1027,16122,18122,19122,20122,2023,2024,2025,2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036,2037,2038,2039,2040,2041,2042,2043,2044,2045,22122,25122,25123,26122,26123,27122,
-               28122,28123,28124,29122,29123,30122,31122,32122,33122,34122,35122,36122,4116,4117,4118,4119,6121,6122,6123,
-               6124,6125,6126,6127,6128,6129,6130,6131,6132,6133,6134,6135,6136,6137,6138,6139,6140,6141,6142,6143,6144,6145,6146,6147,6148,6149,6150,6151,6152,6153,6154,7121,8121,8122,9121,9122
-              )
-          )
-        -- AND rcta.customer_trx_id IN ( 22503506, 22503508, 29516969, 22860534, 29516330, 22187344, 22187434, 22187484, 22190594 )
       ORDER BY rcta.customer_trx_id
       ;
       --
@@ -291,7 +289,6 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
           IF x_return_status = 'E' THEN
 	  	    ROLLBACK;
             IF x_msg_count = 1 THEN
-
 
                 insert_error
                   (
@@ -387,27 +384,20 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
     fnd_file.put_line(fnd_file.log,CHR(13)||' PROCESSADOS COM ERRO:    '|| ln_count_errornf);
     fnd_file.put_line(fnd_file.log,CHR(13)||' PROCESSADOS COM SUCESSO: '|| ln_count_succesnf);
 
-    fnd_file.put_line(fnd_file.log, CHR(13) || 'Para Localizar as Transações processadas com sucesso: SELECT * FROM ra_customer_trx_all WHERE 1=1 AND ' ||
-	                  'attribute3       = ' || CHR(39) || 'AR_RECEIPT_API_PUB.APPLY - SUCCESSFUL' || CHR(39) || ' AND TRUNC(last_update_date) = TRUNC(SYSDATE); '
-                     );
-
-    fnd_file.put_line(fnd_file.log, CHR(13) || 'Para Localizar as Transações com erro: SELECT * FROM XXVEN_TMP_LOG_TB WHERE 1=1 ' ||
-	                  ' AND TRUNC(creation_date) = TRUNC(SYSDATE); '
-                     );
-
     fnd_file.put_line(fnd_file.log,CHR(13)||'    Fim APPLY_RECEIPT_P  ');
     fnd_file.put_line(fnd_file.log,'-------------------------------------------------------------------------------');
   END  APPLY_RECEIPT_P;
   --
   PROCEDURE CREATE_INV_ADJ_P
     (
-        errbuf    OUT VARCHAR2
-      , retcode   OUT NUMBER
+        errbuf         OUT VARCHAR2
+      , retcode        OUT NUMBER
+      , p_customer_id  IN NUMBER
     )
   IS
     -- Ajuste 1 --
     CURSOR c_rcta IS -- (p_start_date  DATE, p_end_date  DATE) IS
-      SELECT
+            SELECT
                apsa.customer_trx_id
              , apsa.customer_id
              , apsa.payment_schedule_id
@@ -420,7 +410,7 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
         FROM
                ra_customer_trx_all        rcta
              , ar_payment_schedules_all   apsa
-             , ra_cust_trx_types_all         rctta
+             , ra_cust_trx_types_all      rctta
       WHERE 1=1
         AND rctta.name                    IN ( '5102_5405_ANALISA', '5102_5405_VENDA_MERC', 'CARTAO DE CREDITO', 'NOTA DE DÉBITO', 'NOTA DE DEBITO')
         AND rctta.cust_trx_type_id        = rcta.cust_trx_type_id
@@ -438,15 +428,12 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                AND a.customer_trx_id          = rcta.customer_trx_id
                AND a.customer_trx_id          = b.customer_trx_id
                AND a.term_id                  = d.term_id
-               AND a.bill_to_customer_id      NOT IN (11110, 10109, 11108)
+               AND a.bill_to_customer_id      = p_customer_id
                AND a.org_id                   = fnd_global.org_id            --101 para HN_AJUSTE_BAIXA_CC    AND A.ORG_ID = 83 para DV_AJUSTE_BAIXA_CC
                AND a.trx_date                 <= TO_DATE('30/09/2019','DD/MM/YYYY')
                AND b.amount_due_remaining     > 0
                AND a.status_trx               != 'VD'
                --AND b.status                   != 'CL'
-               AND (D.name like '%TPOS_%' OR 
-                    D.name like '%TEF%' OR 
-                    D.name like '%EQ%')
                AND NOT EXISTS ( SELECT 1 FROM ra_customer_trx_all
                                 WHERE 1=1
                                   AND previous_customer_trx_id = a.customer_trx_id
@@ -583,7 +570,6 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
     mo_global.set_policy_context( p_access_mode => 'S', p_org_id => fnd_global.org_id ); -- 83);
     fnd_file.put_line ( fnd_file.log, lv_routine||' - Início...' );
     fnd_file.put_line ( fnd_file.log, CHR(13)||CHR(13) );
-    fnd_file.put_line ( fnd_file.log, 'O Registro do LOG: SELECT * FROM xxven_erro_adj_tb WHERE 1=1 AND TRUNC(CREATION_DATE) = TRUNC(SYSDATE);' || CHR(13) );
 
     lv_debug := '(00) - '||lv_pkname||'.'||lv_routine||CHR(13);
     --
