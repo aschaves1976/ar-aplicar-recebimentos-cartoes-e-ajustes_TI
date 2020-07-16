@@ -50,14 +50,13 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
 	--
 	-- Customer_id: 11110 (TEMPO SERVICOS LTDA); 11108 (REDECARD SA); 10109 (CIELO SA)
     --
-    APPLY_RECEIPT_P
-      (
-          errbuf          => errbuf    
-        , retcode         => retcode
-        , p_customer_id   => p_customer_id
-
-      )
-    ;
+--    APPLY_RECEIPT_P
+--      (
+--          errbuf          => errbuf    
+--        , retcode         => retcode
+--        , p_customer_id   => p_customer_id
+--      )
+--    ;
     CREATE_INV_ADJ_P
       (
           errbuf          => errbuf    
@@ -401,8 +400,8 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                apsa.customer_trx_id
              , apsa.customer_id
              , apsa.payment_schedule_id
-             , ( apsa.amount_due_original * -1 )   amount_due_original
-             , apsa.amount_due_remaining
+             , ( apsa.amount_due_original )   amount_due_original
+             , ( apsa.amount_due_remaining )  amount_due_remaining
              , apsa.due_date
              , TO_DATE( '01/07/2020', 'DD/MM/RRRR' )  gl_date
              , apsa.customer_site_use_id
@@ -439,7 +438,7 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                                   AND previous_customer_trx_id = a.customer_trx_id
                               )
            )
-        -- AND rcta.customer_trx_id IN
+       -- AND rcta.customer_trx_id IN (811106, 477322)
     ;    --
 	--
     -- Types --
@@ -500,6 +499,7 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
     lv_reason_code                  fnd_lookup_values_vl.lookup_code%TYPE;
     lv_organization_code            org_organization_definitions.organization_code%TYPE;
     ln_warehouse_id                 ra_customer_trx_lines_all.warehouse_id%TYPE;
+    ln_amount_due_remaining         ar_payment_schedules_all.amount_due_remaining%TYPE;
 
     -- AJUSTE TROCA V  
     FUNCTION GET_RECEIVABLE_TRX_ID
@@ -711,70 +711,105 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
          --
          lv_debug := '(04) - '||lv_pkname||'.'||lv_routine||chr(13);
          --
-         l_adjust.created_by          := 0; -- ln_user_id;
-         l_adjust.creation_date       := SYSDATE;
-         l_adjust.last_updated_by     := 0; -- ln_user_id;
-         l_adjust.approved_by         := 0; -- ln_user_id;
-         l_adjust.last_update_date    := SYSDATE;
-         l_adjust.request_id          := ln_conc_request_id;
-		 l_adjust.apply_date          := l_gl_date(ln_counter); -- SYSDATE; 
-		 l_adjust.gl_date             := l_gl_date(ln_counter);
-         l_adjust.comments            := NULL;
-         l_adjust.adjustment_type     := 'M';
-         l_adjust.status              := 'A';
-         l_adjust.customer_trx_id     := l_customer_trx_id(ln_counter);
-         l_adjust.payment_schedule_id := l_payment_schedule_id(ln_counter);
-         l_adjust.receivables_trx_id  := ln_receivables_trx_id;
-         l_adjust.reason_code         := lv_reason_code;
-         l_adjust.created_from        := lv_routine;
-         l_adjust.postable            := 'Y';
-         l_adjust.postINg_control_id  := -3;
-         --
-		 IF ( l_amount_due_original(ln_counter) * -1 ) = l_amount_due_remaining(ln_counter) THEN
+		     IF l_amount_due_original(ln_counter) = l_amount_due_remaining(ln_counter) THEN
            l_adjust.type                := 'INVOICE';
-         ELSIF ( l_amount_due_original(ln_counter) * -1 ) <> l_amount_due_remaining(ln_counter) THEN
+         ELSIF l_amount_due_original(ln_counter) > l_amount_due_remaining(ln_counter) THEN
            l_adjust.type                := 'LINE';	 
+         ELSIF l_amount_due_original(ln_counter) < l_amount_due_remaining(ln_counter) THEN
+           l_adjust.type                := NULL;	 
          END IF;
-         -- 
-         l_adjust.amount              := l_amount_due_original(ln_counter);
-         l_adjust.acctd_amount        := l_amount_due_original(ln_counter);
-         --
          -- Create Adjustment --
          lv_debug := '(05) - '||lv_pkname||'.'||lv_routine||chr(13);
-         BEGIN
-           ar_adjust_pub.create_adjustment
-             (
-                 p_api_name          => 'AR_ADJUST_PUB'          --IN
-               , p_api_version       => 1.0                      --IN
-               , p_msg_count         => ln_msg_count             --out
-               , p_msg_data          => lv_msg_data              --out
-               , p_return_status     => lv_return_status         --out
-               , p_adj_rec           => l_adjust                 --IN
-               , p_new_adjust_number => lv_new_adjustment_number --out
-               , p_new_adjust_id     => ln_new_adjustment_id     --out
-             )
-           ;
+         IF l_adjust.type IS NOT NULL THEN
+           l_adjust.created_by          := 0; -- ln_user_id;
+           l_adjust.creation_date       := SYSDATE;
+           l_adjust.last_updated_by     := 0; -- ln_user_id;
+           l_adjust.approved_by         := 0; -- ln_user_id;
+           l_adjust.last_update_date    := SYSDATE;
+           l_adjust.request_id          := ln_conc_request_id;
+           l_adjust.apply_date          := l_gl_date(ln_counter); -- SYSDATE; 
+           l_adjust.gl_date             := l_gl_date(ln_counter);
+           l_adjust.comments            := NULL;
+           l_adjust.adjustment_type     := 'M';
+           l_adjust.status              := 'A';
+           l_adjust.customer_trx_id     := l_customer_trx_id(ln_counter);
+           l_adjust.payment_schedule_id := l_payment_schedule_id(ln_counter);
+           l_adjust.receivables_trx_id  := ln_receivables_trx_id;
+           l_adjust.reason_code         := lv_reason_code;
+           l_adjust.created_from        := lv_routine;
+           l_adjust.postable            := 'Y';
+           l_adjust.postINg_control_id  := -3;
            --
-           lv_debug := '(05.1) - '||lv_pkname||'.'||lv_routine||chr(13);
-           IF lv_return_status <> fnd_api.g_ret_sts_success THEN
-             retcode := 1;
-             LOG_II_P
-                 (
-                    P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
-                  , P_CUSTOMER_ID          => l_customer_id(ln_counter)
-                  , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
-                  , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
-                  , P_DUE_DATE             => l_due_date(ln_counter)
-                  , P_GL_DATE              => l_gl_date(ln_counter)
-                  , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
-                  , P_TRX_DATE             => l_trx_date(ln_counter)
-                  , P_DESCRICAO            => lv_debug ||'  Erro ao criar o Ajuste - '||SQLERRM
-                 )
+           ln_amount_due_remaining      := ( l_amount_due_remaining(ln_counter) * -1 );
+           l_adjust.amount              := ln_amount_due_remaining;
+           l_adjust.acctd_amount        := ln_amount_due_remaining;
+           
+           BEGIN
+             ar_adjust_pub.create_adjustment
+               (
+                   p_api_name          => 'AR_ADJUST_PUB'          --IN
+                 , p_api_version       => 1.0                      --IN
+                 , p_msg_count         => ln_msg_count             --out
+                 , p_msg_data          => lv_msg_data              --out
+                 , p_return_status     => lv_return_status         --out
+                 , p_adj_rec           => l_adjust                 --IN
+                 , p_new_adjust_number => lv_new_adjustment_number --out
+                 , p_new_adjust_id     => ln_new_adjustment_id     --out
+               )
              ;
-             IF ln_msg_count > 0 THEN
-               FOR i IN 1 .. ln_msg_count LOOP
-                 lv_msg_data := fnd_msg_pub.GET(p_msg_index => i, p_encoded => 'F');
+             --
+             lv_debug := '(05.1) - '||lv_pkname||'.'||lv_routine||chr(13);
+             IF lv_return_status <> fnd_api.g_ret_sts_success THEN
+               retcode := 1;
+               LOG_II_P
+                   (
+                      P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                    , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                    , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                    , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                    , P_DUE_DATE             => l_due_date(ln_counter)
+                    , P_GL_DATE              => l_gl_date(ln_counter)
+                    , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                    , P_TRX_DATE             => l_trx_date(ln_counter)
+                    , P_DESCRICAO            => lv_debug ||'  Erro ao criar o Ajuste - '||SQLERRM
+                   )
+               ;
+               IF ln_msg_count > 0 THEN
+                 FOR i IN 1 .. ln_msg_count LOOP
+                   lv_msg_data := fnd_msg_pub.GET(p_msg_index => i, p_encoded => 'F');
+                   IF lv_msg_data IS NOT NULL THEN
+                     LOG_II_P
+                         (
+                            P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                          , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                          , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                          , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                          , P_DUE_DATE             => l_due_date(ln_counter)
+                          , P_GL_DATE              => l_gl_date(ln_counter)
+                          , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                          , P_TRX_DATE             => l_trx_date(ln_counter)
+                          , P_DESCRICAO            => lv_debug ||' '||lv_msg_data
+                         )
+                     ;
+                   END IF;
+                 END LOOP;
+               ELSE
+                 lv_msg_data := fnd_msg_pub.GET;
                  IF lv_msg_data IS NOT NULL THEN
+                     LOG_II_P
+                         (
+                            P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                          , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                          , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                          , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                          , P_DUE_DATE             => l_due_date(ln_counter)
+                          , P_GL_DATE              => l_gl_date(ln_counter)
+                          , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                          , P_TRX_DATE             => l_trx_date(ln_counter)
+                          , P_DESCRICAO            => lv_debug ||' '||lv_msg_data
+                         )
+                     ;
+                 ELSE
                    LOG_II_P
                        (
                           P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
@@ -785,64 +820,33 @@ CREATE OR REPLACE PACKAGE BODY XXVEN_AR_RCPTS_CREDITCARD_PKG AS
                         , P_GL_DATE              => l_gl_date(ln_counter)
                         , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
                         , P_TRX_DATE             => l_trx_date(ln_counter)
-                        , P_DESCRICAO            => lv_debug ||' '||lv_msg_data
+                        , P_DESCRICAO            => lv_debug ||' Erro não retornado para a API AR_ADJUST_PUB.CREATE_ADJUSTMENT'
                        )
                    ;
                  END IF;
-               END LOOP;
-             ELSE
-               lv_msg_data := fnd_msg_pub.GET;
-               IF lv_msg_data IS NOT NULL THEN
-                   LOG_II_P
-                       (
-                          P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
-                        , P_CUSTOMER_ID          => l_customer_id(ln_counter)
-                        , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
-                        , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
-                        , P_DUE_DATE             => l_due_date(ln_counter)
-                        , P_GL_DATE              => l_gl_date(ln_counter)
-                        , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
-                        , P_TRX_DATE             => l_trx_date(ln_counter)
-                        , P_DESCRICAO            => lv_debug ||' '||lv_msg_data
-                       )
-                   ;
-               ELSE
-                 LOG_II_P
-                     (
-                        P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
-                      , P_CUSTOMER_ID          => l_customer_id(ln_counter)
-                      , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
-                      , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
-                      , P_DUE_DATE             => l_due_date(ln_counter)
-                      , P_GL_DATE              => l_gl_date(ln_counter)
-                      , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
-                      , P_TRX_DATE             => l_trx_date(ln_counter)
-                      , P_DESCRICAO            => lv_debug ||' Erro não retornado para a API AR_ADJUST_PUB.CREATE_ADJUSTMENT'
-                     )
-                 ;
                END IF;
+             ELSE
+               COMMIT;
+               lv_sucs_msg := 'Adjustment_id:'       || ln_new_adjustment_id    ||
+                              'Adjustment_Number:'   || lv_new_adjustment_number||' AJUSTE CRIADO COM SUCESSO. '
+               ;
+               LOG_II_P
+                   (
+                      P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
+                    , P_CUSTOMER_ID          => l_customer_id(ln_counter)
+                    , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
+                    , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
+                    , P_DUE_DATE             => l_due_date(ln_counter)
+                    , P_GL_DATE              => l_gl_date(ln_counter)
+                    , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
+                    , P_TRX_DATE             => l_trx_date(ln_counter)
+                    , P_DESCRICAO            => lv_sucs_msg
+                   )
+               ;
+               --
              END IF;
-           ELSE
-             COMMIT;
-             lv_sucs_msg := 'Adjustment_id:'       || ln_new_adjustment_id    ||
-                            'Adjustment_Number:'   || lv_new_adjustment_number||' AJUSTE CRIADO COM SUCESSO. '
-             ;
-             LOG_II_P
-                 (
-                    P_CUSTOMER_TRX_ID      => l_customer_trx_id(ln_counter)
-                  , P_CUSTOMER_ID          => l_customer_id(ln_counter)
-                  , P_PAYMENT_SCHEDULE_ID  => l_payment_schedule_id(ln_counter)
-                  , P_AMOUNT_DUE_ORIGINAL  => l_amount_due_original(ln_counter)
-                  , P_DUE_DATE             => l_due_date(ln_counter)
-                  , P_GL_DATE              => l_gl_date(ln_counter)
-                  , P_CUSTOMER_SITE_USE_ID => l_customer_site_use_id(ln_counter)
-                  , P_TRX_DATE             => l_trx_date(ln_counter)
-                  , P_DESCRICAO            => lv_sucs_msg
-                 )
-             ;
-             --
-           END IF;
-         END;
+           END;
+         END IF;
          <<PROXIMO>>
          ln_counter := l_customer_trx_id.NEXT(ln_counter);
          NULL;
